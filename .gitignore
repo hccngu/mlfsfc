@@ -1,5 +1,2 @@
-backup
-miniimagenet
-omniglot
-.idea
-__pycache__
+data
+model_checkpoint
