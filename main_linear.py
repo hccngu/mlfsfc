@@ -439,6 +439,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=100):
             if cuda:
                 support_label, query_label = support_label.cuda(), query_label.cuda()
 
+            '''First Step'''
             loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query, query_label, mymodel,
                                                   args.Test_update_step, args.task_lr, it)
 
@@ -459,6 +460,30 @@ def train_model(mymodel, mymodel_clone, args, val_step=100):
             for name in orderd_params:
                 if name in name_list:
                     mymodel_clone.state_dict()[name].copy_(orderd_params[name])
+
+            for _ in range(5-1):
+                '''2-5th Step'''
+                loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query,
+                                                                       query_label, mymodel_clone,
+                                                                       args.Test_update_step, args.task_lr, it)
+
+                zero_grad(mymodel_clone.parameters())
+                grads_fc = autograd.grad(loss_s, mymodel_clone.fc.parameters(), retain_graph=True)
+                grads_mlp = autograd.grad(loss_s, mymodel_clone.mlp.parameters())
+                fast_weights_fc, orderd_params = mymodel_clone.cloned_fc_dict(), OrderedDict()
+                fast_weights_mlp = mymodel_clone.cloned_mlp_dict()
+                for (key, val), grad in zip(mymodel_clone.fc.named_parameters(), grads_fc):
+                    fast_weights_fc[key] = orderd_params['fc.' + key] = val - args.task_lr * grad
+                for (key, val), grad in zip(mymodel_clone.mlp.named_parameters(), grads_mlp):
+                    fast_weights_mlp[key] = orderd_params['mlp.' + key] = val - args.task_lr * grad
+
+                name_list = []
+                for name in mymodel_clone.state_dict():
+                    name_list.append(name)
+
+                for name in orderd_params:
+                    if name in name_list:
+                        mymodel_clone.state_dict()[name].copy_(orderd_params[name])
 
             # -----在Query上计算loss和acc-------
             loss_q, right_q = train_q(batch, class_name1, query1, query_label, mymodel_clone)
@@ -528,8 +553,8 @@ def test_model(cuda, data_loader, mymodel, val_iter, test_update_step, task_lr, 
             if name in name_list:
                 mymodel.state_dict()[name].copy_(orderd_params[name])
 
-        '''second-5th step'''
-        for _ in range(5-1):
+        '''second-10th step'''
+        for _ in range(10-1):
             loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query,
                                                                    query_label, mymodel, args.Test_update_step,
                                                                    args.task_lr, it)
@@ -599,10 +624,10 @@ if __name__ == '__main__':
     parser.add_argument('--B', type=int, help='batch number', default=1)
     parser.add_argument('--N', type=int, help='N way', default=5)
     parser.add_argument('--K', type=int, help='K shot', default=1)
-    parser.add_argument('--L', type=int, help='number of query per class', default=30)
+    parser.add_argument('--L', type=int, help='number of query per class', default=25)
     parser.add_argument('--noise_rate', type=int, help='noise rate, value range 0 to 10', default=0)
-    parser.add_argument('--task_lr', type=int, help='Task learning rate(里层)', default=1)
-    parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-4)
+    parser.add_argument('--task_lr', type=int, help='Task learning rate(里层)', default=1e-1)
+    parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-3)
 
     args = parser.parse_args()
 
