@@ -312,7 +312,7 @@ def train_one_batch(batch, class_name0, support0, support_label, query0, query_l
         K = 0
     else:
         K = mymodel2.k_shot
-    support, query = mymodel2.coder(support0), mymodel2.coder(query0)  # [N*K, maxlength, 768]
+    support = mymodel2.coder(support0)  # [N*K, maxlength, 768]
     class_name = mymodel2.coder(class_name0, is_classname=True)  # [N, maxlength, 768]
 
     class_name = mymodel2(class_name)  # ->[N, 512]
@@ -398,9 +398,15 @@ def train_model(mymodel1, mymodel2, args, val_step=100):
 
             loss_s, right_s = train_one_batch(batch, class_name, support, support_label, query, query_label, mymodel1, mymodel2,
                                           args.Test_update_step, args.task_lr, it)
-            mymodel2_task_opt.zero_grad()
-            loss_s.backward(retain_graph=True)
-            mymodel2_task_opt.step()
+
+            if batch == args.B - 1:
+                mymodel2_task_opt.zero_grad()
+                loss_s.backward(retain_graph=True)
+                mymodel2_task_opt.step()
+            else:
+                mymodel2_task_opt.zero_grad()
+                loss_s.backward()
+                mymodel2_task_opt.step()
 
             # -----在Query上计算loss和acc-------
             loss_q, right_q = train_q(batch, class_name, support, support_label, query, query_label, mymodel1, mymodel2,
@@ -413,6 +419,7 @@ def train_model(mymodel1, mymodel2, args, val_step=100):
 
         # mymodel2.load_state_dict(torch.load('model_checkpoint/checkpoint.{}th.tar'.format(it)))
         # deep_copy(mymodel1, mymodel2)
+
         mymodel1_meta_opt.zero_grad()
         meta_loss_avg.backward()
         mymodel1_meta_opt.step()
@@ -428,7 +435,7 @@ def train_model(mymodel1, mymodel2, args, val_step=100):
         if (it + 1) % val_step == 0:
             acc = test_model(cuda, data_loader['val'], mymodel1, mymodel2, args.Val_iter, args.Test_update_step, args.task_lr, mymodel2_task_opt)
             print('[EVAL] | accuracy: {0:2.2f}%'.format(acc * 100))
-            if acc > best_acc:
+            if acc >= best_acc:
                 print('Best checkpoint!')
                 torch.save(mymodel1.state_dict(), 'model_checkpoint/checkpoint.{}th_best_model' + n_way_k_shot + '.tar'.format(it))
                 best_acc, best_step, best_changed = acc, (it + 1), True
@@ -495,7 +502,7 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, help='seed', default=15)
     parser.add_argument('--max_length', type=int, help='max length', default=300)
     parser.add_argument('--Train_iter', type=int, help='number of iters in training', default=10000)
-    parser.add_argument('--Val_iter', type=int, help='number of iters in validing', default=1000)
+    parser.add_argument('--Val_iter', type=int, help='number of iters in validing', default=1)
     parser.add_argument('--Test_update_step', type=int, help='number of adaptation steps', default=10)
     parser.add_argument('--B', type=int, help='batch number', default=1)
     parser.add_argument('--N', type=int, help='N way', default=5)
