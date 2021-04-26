@@ -22,7 +22,7 @@ from dataloader import FewRel, get_dataloader
 from utils import neg_dist
 
 
-def train_one_batch(batch, class_name0, support0, support_label, query0, query_label, mymodel, Test_update_step, task_lr, it,
+def train_one_batch(batch, class_name0, support0, support_label, query0, query_label, mymodel, task_lr, it,
                     zero_shot=False):
 
     N = mymodel.n_way

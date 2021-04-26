@@ -43,7 +43,7 @@ def deep_copy(model1, model2):
     return
 
 
-def train_model(mymodel, mymodel_clone, args, val_step=1000):
+def train_model(mymodel, mymodel_clone, args, val_step=500):
 
     n_way_k_shot = str(args.N) + '-way-' + str(args.K) + '-shot'
     print('Start training ' + n_way_k_shot)
@@ -68,6 +68,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=1000):
 
     best_acc, best_step, best_test_acc, best_test_step, best_val_loss, best_changed = 0.0, 0, 0.0, 0, 100.0, False
     iter_loss, iter_right, iter_sample = 0.0, 0.0, 0.0
+    count = 0
 
 
     for it in range(args.Train_iter):
@@ -82,11 +83,11 @@ def train_model(mymodel, mymodel_clone, args, val_step=1000):
 
             '''First Step'''
             loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query, query_label, mymodel,
-                                                  args.Test_update_step, args.task_lr, it)
+                                                  args.task_lr, it)
 
             zero_grad(mymodel.parameters())
             grads_fc = autograd.grad(loss_s, mymodel.fc.parameters(), retain_graph=True)
-            grads_mlp = autograd.grad(loss_s, mymodel.mlp.parameters())
+            grads_mlp = autograd.grad(loss_s, mymodel.mlp.parameters(), retain_graph=True)
             fast_weights_fc, orderd_params = mymodel.cloned_fc_dict(), OrderedDict()
             fast_weights_mlp = mymodel.cloned_mlp_dict()
             for (key, val), grad in zip(mymodel.fc.named_parameters(), grads_fc):
@@ -106,11 +107,11 @@ def train_model(mymodel, mymodel_clone, args, val_step=1000):
                 '''2-5th Step'''
                 loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query,
                                                                        query_label, mymodel_clone,
-                                                                       args.Test_update_step, args.task_lr, it)
+                                                                    args.task_lr, it)
 
                 zero_grad(mymodel_clone.parameters())
                 grads_fc = autograd.grad(loss_s, mymodel_clone.fc.parameters(), retain_graph=True)
-                grads_mlp = autograd.grad(loss_s, mymodel_clone.mlp.parameters())
+                grads_mlp = autograd.grad(loss_s, mymodel_clone.mlp.parameters(), retain_graph=True)
                 fast_weights_fc, orderd_params = mymodel_clone.cloned_fc_dict(), OrderedDict()
                 fast_weights_mlp = mymodel_clone.cloned_mlp_dict()
                 for (key, val), grad in zip(mymodel_clone.fc.named_parameters(), grads_fc):
@@ -150,20 +151,24 @@ def train_model(mymodel, mymodel_clone, args, val_step=1000):
             iter_loss, iter_right, iter_sample = 0.0, 0.0, 0.0
 
         if (it + 1) % val_step == 0:
-            acc, val_loss = test_model(cuda, data_loader['val'], mymodel, args.Val_iter, args.Test_update_step, args.task_lr, meta_optimizer)
+            count += 1
+            acc, val_loss = test_model(cuda, data_loader['val'], mymodel, args.Val_iter, args.task_lr, meta_optimizer)
             print('[EVAL] | loss: {0:2.6f}, accuracy: {1:2.2f}%'.format(val_loss, acc * 100))
-            if acc >= best_acc or val_loss <= best_val_loss:
+            if acc >= best_acc:
                 print('Best checkpoint!')
-                torch.save(mymodel.state_dict(), 'model_checkpoint/checkpoint.{0}th_best_model{1}_way_{2}_shot.tar'.format(it, args.N, args.K))
+                count = 0
+                torch.save(mymodel.state_dict(), 'model_checkpoint/checkpoint.{0}th_best_model{1}_way_{2}_shot_Lis25.tar'.format(it+1, args.N, args.K))
                 best_acc, best_step, best_val_loss, best_changed = acc, (it + 1), val_loss, True
 
         torch.cuda.empty_cache()
+        if count > 20:
+            break
 
     print("\n####################\n")
-    print('Finish training model! Best acc: ' + str(best_acc) + ' at step ' + str(best_step))
+    print('Finish training model! Best val acc: ' + str(best_acc) + ' at step ' + str(best_step))
 
 
-def test_model(cuda, data_loader, mymodel, val_iter, test_update_step, task_lr, meta_optimizer, zero_shot=False):
+def test_model(cuda, data_loader, mymodel, val_iter, task_lr, meta_optimizer, zero_shot=False):
 
     meta_loss_final = 0.0
     accs=0.0
@@ -176,7 +181,7 @@ def test_model(cuda, data_loader, mymodel, val_iter, test_update_step, task_lr, 
             support_label, query_label = support_label.cuda(), query_label.cuda()
 
         '''First Step'''
-        loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query, query_label, mymodel, args.Test_update_step, args.task_lr, it)
+        loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query, query_label, mymodel, args.task_lr, it)
 
         zero_grad(mymodel.parameters())
         grads_fc = autograd.grad(loss_s, mymodel.fc.parameters(), retain_graph=True)
@@ -199,7 +204,7 @@ def test_model(cuda, data_loader, mymodel, val_iter, test_update_step, task_lr, 
         '''second-10th step'''
         for _ in range(10-1):
             loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query,
-                                                                   query_label, mymodel, args.Test_update_step,
+                                                                   query_label, mymodel,
                                                                    args.task_lr, it)
 
             zero_grad(mymodel.parameters())
@@ -260,15 +265,15 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--Model', help='Model_name', default='Linear')
-    parser.add_argument('--train', help='train file', default='data/FewRel1.0/train_wiki.json')
-    parser.add_argument('--val', help='val file', default='data/FewRel1.0/val_wiki.json')
-    parser.add_argument('--test', help='test file', default='data/FewRel1.0/val_wiki.json')
+    parser.add_argument('--train', help='train file', default='data/FewRel1.0/train_data.json')
+    parser.add_argument('--val', help='val file', default='data/FewRel1.0/val_data.json')
+    parser.add_argument('--test', help='test file', default='data/FewRel1.0/test_data.json')
     parser.add_argument('--class_name_file', help='class name file', default='data/FewRel1.0/pid2name.json')
     parser.add_argument('--seed', type=int, help='seed', default=15)
-    parser.add_argument('--max_length', type=int, help='max length', default=30)
+    parser.add_argument('--max_length', type=int, help='max length', default=40)
     parser.add_argument('--Train_iter', type=int, help='number of iters in training', default=100000)
-    parser.add_argument('--Val_iter', type=int, help='number of iters in validing', default=500)
-    parser.add_argument('--Test_update_step', type=int, help='number of adaptation steps', default=10)
+    parser.add_argument('--Val_iter', type=int, help='number of iters in validing', default=50)
+    parser.add_argument('--Test_iter', type=int, help='number of adaptation steps', default=1000)
     parser.add_argument('--B', type=int, help='batch number', default=1)
     parser.add_argument('--N', type=int, help='N way', default=5)
     parser.add_argument('--K', type=int, help='K shot', default=1)
@@ -278,6 +283,7 @@ if __name__ == '__main__':
     parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-3)
 
     parser.add_argument('--ITT', type=int, help='Increasing Training Tasks', default=True)
+    parser.add_argument('--NPM_Loss', type=int, help='AUX Loss, N-pair-ms loss', default=True)
 
     args = parser.parse_args()
 

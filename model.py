@@ -22,7 +22,6 @@ class BERT(nn.Module):
     def __init__(self, args, blank_padding=True):
         super(BERT, self).__init__()
         self.cuda = torch.cuda.is_available()
-        self.cuda = False
         self.n_way = args.N
         self.max_length = args.max_length
         self.blank_padding = blank_padding
