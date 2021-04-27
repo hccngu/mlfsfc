@@ -53,8 +53,8 @@ def test_model(mymodel, mymodel_clone, args):
             support_label, query_label = support_label.cuda(), query_label.cuda()
 
         '''First Step'''
-        loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query, query_label, mymodel,
-                                              args.Test_update_step, args.task_lr, it)
+        loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query, query_label, mymodel,
+                                                args.task_lr, it)
 
         zero_grad(mymodel.parameters())
         grads_fc = autograd.grad(loss_s, mymodel.fc.parameters(), retain_graph=True)
@@ -76,9 +76,9 @@ def test_model(mymodel, mymodel_clone, args):
 
         for _ in range(10-1):
             '''2-10th Step'''
-            loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query,
+            loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query,
                                                                    query_label, mymodel_clone,
-                                                                   args.Test_update_step, args.task_lr, it)
+                                                                   args.task_lr, it)
 
             zero_grad(mymodel_clone.parameters())
             grads_fc = autograd.grad(loss_s, mymodel_clone.fc.parameters(), retain_graph=True)
@@ -99,7 +99,7 @@ def test_model(mymodel, mymodel_clone, args):
                     mymodel_clone.state_dict()[name].copy_(orderd_params[name])
 
         # -----在Query上计算loss和acc-------
-        loss_q, right_q = train_q(0, class_name1, query1, query_label, mymodel_clone)
+        loss_q, right_q = train_q(args, class_name1, query1, query_label, mymodel_clone)
         meta_loss = meta_loss + loss_q
         meta_loss_final += loss_q
         accs += right_q
@@ -127,9 +127,13 @@ def main(args):
 
     mymodel = MyModel(args)
     mymodel_clone = MyModel_Clone(args)
-    mymodel.load_state_dict(torch.load('model_checkpoint/checkpoint.{}th_best_model5-way-1-shot.tar'))
-    acc, loss = test_model(mymodel, mymodel_clone, args)
-    print('[TEST] | loss: {0:2.6f}, accuracy: {1:2.2f}%'.format(loss, acc * 100))
+    for file_name in os.listdir('model_checkpoint'):
+        if 'Lis25.tar' in file_name:
+            model_file = 'model_checkpoint/' + file_name
+            mymodel.load_state_dict(torch.load(model_file))
+            acc, loss = test_model(mymodel, mymodel_clone, args)
+            print('model_name:', model_file)
+            print('[TEST] | loss: {0:2.6f}, accuracy: {1:2.2f}%'.format(loss, acc * 100))
 
 
 if __name__ == '__main__':
@@ -154,6 +158,8 @@ if __name__ == '__main__':
     parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-3)
 
     parser.add_argument('--ITT', type=int, help='Increasing Training Tasks', default=True)
+    parser.add_argument('--NPM_Loss', type=int, help='AUX Loss, N-pair-ms loss', default=False)
+    parser.add_argument('--lam', type=int, help='the importance if AUX Loss', default=0.2)
 
     args = parser.parse_args()
 

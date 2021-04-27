@@ -82,7 +82,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=500):
                 support_label, query_label = support_label.cuda(), query_label.cuda()
 
             '''First Step'''
-            loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query, query_label, mymodel,
+            loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query, query_label, mymodel,
                                                   args.task_lr, it)
 
             zero_grad(mymodel.parameters())
@@ -105,7 +105,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=500):
 
             for _ in range(5-1):
                 '''2-5th Step'''
-                loss_s, right_s, query1, class_name1 = train_one_batch(batch, class_name, support, support_label, query,
+                loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query,
                                                                        query_label, mymodel_clone,
                                                                     args.task_lr, it)
 
@@ -128,7 +128,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=500):
                         mymodel_clone.state_dict()[name].copy_(orderd_params[name])
 
             # -----在Query上计算loss和acc-------
-            loss_q, right_q = train_q(batch, class_name1, query1, query_label, mymodel_clone)
+            loss_q, right_q = train_q(args, class_name1, query1, query_label, mymodel_clone)
             meta_loss = meta_loss + loss_q
             meta_right = meta_right + right_q
 
@@ -157,7 +157,7 @@ def train_model(mymodel, mymodel_clone, args, val_step=500):
             if acc >= best_acc:
                 print('Best checkpoint!')
                 count = 0
-                torch.save(mymodel.state_dict(), 'model_checkpoint/checkpoint.{0}th_best_model{1}_way_{2}_shot_Lis25.tar'.format(it+1, args.N, args.K))
+                torch.save(mymodel.state_dict(), 'model_checkpoint/checkpoint.{0}th_best_model{1}_way_{2}_shot_Lis25_isNPM.tar'.format(it+1, args.N, args.K))
                 best_acc, best_step, best_val_loss, best_changed = acc, (it + 1), val_loss, True
 
         torch.cuda.empty_cache()
@@ -181,7 +181,7 @@ def test_model(cuda, data_loader, mymodel, val_iter, task_lr, meta_optimizer, ze
             support_label, query_label = support_label.cuda(), query_label.cuda()
 
         '''First Step'''
-        loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query, query_label, mymodel, args.task_lr, it)
+        loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query, query_label, mymodel, args.task_lr, it)
 
         zero_grad(mymodel.parameters())
         grads_fc = autograd.grad(loss_s, mymodel.fc.parameters(), retain_graph=True)
@@ -203,7 +203,7 @@ def test_model(cuda, data_loader, mymodel, val_iter, task_lr, meta_optimizer, ze
 
         '''second-10th step'''
         for _ in range(10-1):
-            loss_s, right_s, query1, class_name1 = train_one_batch(0, class_name, support, support_label, query,
+            loss_s, right_s, query1, class_name1 = train_one_batch(args, class_name, support, support_label, query,
                                                                    query_label, mymodel,
                                                                    args.task_lr, it)
 
@@ -226,7 +226,7 @@ def test_model(cuda, data_loader, mymodel, val_iter, task_lr, meta_optimizer, ze
                     mymodel.state_dict()[name].copy_(orderd_params[name])
 
         # -----在Query上计算loss和acc-------
-        loss_q, right_q = train_q(0, class_name1, query1, query_label, mymodel)
+        loss_q, right_q = train_q(args, class_name1, query1, query_label, mymodel)
         meta_loss = meta_loss + loss_q
         meta_loss_final += loss_q
         accs += right_q
@@ -282,8 +282,9 @@ if __name__ == '__main__':
     parser.add_argument('--task_lr', type=int, help='Task learning rate(里层)', default=1e-1)
     parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-3)
 
-    parser.add_argument('--ITT', type=int, help='Increasing Training Tasks', default=True)
+    parser.add_argument('--ITT', type=int, help='Increasing Training Tasks', default=False)
     parser.add_argument('--NPM_Loss', type=int, help='AUX Loss, N-pair-ms loss', default=True)
+    parser.add_argument('--lam', type=int, help='the importance if AUX Loss', default=0.2)
 
     args = parser.parse_args()
 

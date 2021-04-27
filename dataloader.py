@@ -17,8 +17,6 @@ from torch import autograd
 from my_transformers.transformers import AdamW
 from my_transformers.transformers import BertConfig, BertModel, BertTokenizer
 
-from model import BERT, MyModel, MyModel_Clone
-
 
 class FewRel(data.Dataset):
     def __init__(self, file_name, file_class, N, K, L, noise_rate):

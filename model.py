@@ -16,6 +16,7 @@ from torch import autograd
 
 from my_transformers.transformers import AdamW
 from my_transformers.transformers import BertConfig, BertModel, BertTokenizer
+from utils import neg_dist
 
 
 class BERT(nn.Module):
@@ -154,6 +155,8 @@ class MyModel(nn.Module):
         self.Batch = args.B
         self.n_way = args.N
         self.k_shot = args.K
+        self.L = args.L
+        self.lam = args.lam
         self.max_length = args.max_length
         self.coder = BERT(args)  # <[N*K,length], >[N*K, (BiLSTM)hidden_size * 2]
         self.lstm = nn.LSTM(input_size=768, hidden_size=256, num_layers=1, bidirectional=True, batch_first=True,
@@ -190,8 +193,23 @@ class MyModel(nn.Module):
     def cloned_mlp_dict(self):
         return {key: val.clone() for key, val in self.mlp.state_dict().items()}
 
-    def loss(self, logits, label):
-        return self.cost(logits, label)
+    def loss(self, logits, label, support, class_name, NPM, isQ=False):
+        loss_ce = self.cost(logits, label)
+
+        if NPM is True:
+            loss_npm = torch.tensor(0.0, requires_grad=True)
+            if isQ is True:
+                support_N = support.view((self.n_way, self.L, 256))
+            else:
+                support_N = support.view((self.n_way, self.k_shot, 256))
+            for i, s in enumerate(support_N):
+                dist = -neg_dist(s, class_name)  # [K, N]
+                for j, d in enumerate(dist):
+                    for k, di in enumerate(d):
+                        loss_npm = loss_npm + torch.exp(d[i] - di)
+            return loss_ce + self.lam * torch.log(loss_npm)
+        else:
+            return loss_ce
 
     def accuracy(self, pred, label):
         '''
@@ -210,6 +228,8 @@ class MyModel_Clone(nn.Module):
         self.Batch = args.B
         self.n_way = args.N
         self.k_shot = args.K
+        self.L = args.L
+        self.lam = args.lam
         self.max_length = args.max_length
         self.coder = BERT(args)  # <[N*K,length], >[N*K, (BiLSTM)hidden_size * 2]
         self.lstm = nn.LSTM(input_size=768, hidden_size=256, num_layers=1, bidirectional=True, batch_first=True,
@@ -246,8 +266,23 @@ class MyModel_Clone(nn.Module):
     def cloned_mlp_dict(self):
         return {key: val.clone() for key, val in self.mlp.state_dict().items()}
 
-    def loss(self, logits, label):
-        return self.cost(logits, label)
+    def loss(self, logits, label, support, class_name, NPM, isQ=False):
+        loss_ce = self.cost(logits, label)
+
+        if NPM is True:
+            loss_npm = torch.tensor(0.0, requires_grad=True)
+            if isQ is True:
+                support_N = support.view((self.n_way, self.L, 256))
+            else:
+                support_N = support.view((self.n_way, self.k_shot, 256))
+            for i, s in enumerate(support_N):
+                dist = -neg_dist(s, class_name)  # [K, N]
+                for j, d in enumerate(dist):
+                    for k, di in enumerate(d):
+                        loss_npm = loss_npm + torch.exp(d[i] - di)
+            return loss_ce + self.lam * torch.log(loss_npm)
+        else:
+            return loss_ce
 
     def accuracy(self, pred, label):
         '''
