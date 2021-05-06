@@ -32,18 +32,33 @@ import torch.nn.functional as F
 # b = np.random.rand(1, 1000000)
 # c = torch.rand(1, 1000000)
 # d = torch.rand(1, 1000000)
-x = torch.rand(5, 512).cuda().unsqueeze(0)
-y = torch.rand(5*5, 512).cuda().unsqueeze(1)
-support = torch.rand(2, 5, 5, 512).cuda()
-support = torch.mean(support, 2).unsqueeze(2)
-print(support.shape)
-
-# 计算tensor在cuda上的计算速度
-time_start = time.time()
-# dist2 = F.pairwise_distance(e, f, p=2)
+# x = torch.rand(5, 512).cuda().unsqueeze(0)
+# y = torch.rand(5*5, 512).cuda().unsqueeze(1)
+# support = torch.rand(2, 5, 5, 512).cuda()
+# support = torch.mean(support, 2).unsqueeze(2)
+# print(support.shape)
+#
+# # 计算tensor在cuda上的计算速度
+# time_start = time.time()
+# # dist2 = F.pairwise_distance(e, f, p=2)
+# # time_end = time.time()
+# dist2 = torch.pow(torch.pow(x - y, 2).sum(-1), 0.5)
 # time_end = time.time()
-dist2 = torch.pow(torch.pow(x - y, 2).sum(-1), 0.5)
-time_end = time.time()
-print(x.shape)
-print(dist2.shape)
-print(time_end - time_start)
+# print(x.shape)
+# print(dist2.shape)
+# print(time_end - time_start)
+# x = torch.tensor([0.0, 1.0, 2.0])
+# print(x, x.shape)
+# y = F.softmax(x)
+# print(y, y.shape)
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+# xx, yy = np.mgrid[0: 54: 1, 0: 54: 1]
+# print(xx)
+# print(yy.shape)
+
+a = np.array([1, 2, 3])
+b = np.array(a)
+print(b)

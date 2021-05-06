@@ -162,12 +162,14 @@ class MyModel(nn.Module):
         self.lstm = nn.LSTM(input_size=768, hidden_size=256, num_layers=1, bidirectional=True, batch_first=True,
                             dropout=0.2)
         self.mlp = nn.Sequential(
-            nn.Dropout(0.5),
+            nn.Dropout(0.2),
             nn.Linear(768, 512),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.2),
             nn.Linear(512, 256),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 256)
         )
         self.fc = nn.Sequential(
             nn.Dropout(0.5),
@@ -175,6 +177,8 @@ class MyModel(nn.Module):
             nn.ReLU()
         )
         self.cost = nn.CrossEntropyLoss()
+        self.nllloss = nn.NLLLoss()
+        self.softmax = nn.Softmax(-1)
 
     def forward(self, inputs, is_classname=False):  # inputs:[N*K, 768*2] or [N, 768]
 
@@ -193,22 +197,44 @@ class MyModel(nn.Module):
     def cloned_mlp_dict(self):
         return {key: val.clone() for key, val in self.mlp.state_dict().items()}
 
-    def loss(self, logits, label, support, class_name, NPM, isQ=False):
-        loss_ce = self.cost(logits, label)
+    def loss(self, logits, label, support, class_name, NPM, isQ=False, support_weights=None):
+        if support_weights is None:
+            if isQ is True:
+                loss_ce = self.cost(logits, label) /self.L
+            else:
+                loss_ce = self.cost(logits, label) /self.k_shot
+        else:
+            logits_softmax = F.softmax(logits, dim=-1).log()  # [N*K, N]
+            support_weights_tensor = torch.from_numpy(support_weights).view(-1, 1).cuda()  # [N*K, 1]
+            logits_times_weights = logits_softmax * support_weights_tensor
+            loss_ce = self.nllloss(logits_times_weights, label)
 
         if NPM is True:
             loss_npm = torch.tensor(0.0, requires_grad=True)
             if isQ is True:
                 support_N = support.view((self.n_way, self.L, 256))
             else:
+                if support_weights is not None:
+                    support_weights = support_weights.reshape((self.n_way, self.k_shot))
                 support_N = support.view((self.n_way, self.k_shot, 256))
             for i, s in enumerate(support_N):
-                dist = -neg_dist(s, class_name)  # [K, N]
+                dist = -neg_dist(s, class_name) / torch.mean(-neg_dist(s, class_name), dim=0)  # [K, N]
                 for j, d in enumerate(dist):
+                    loss_npm_temp = torch.tensor(0.0, requires_grad=True)
                     for k, di in enumerate(d):
-                        loss_npm = loss_npm + torch.exp(d[i] - di)
-            return loss_ce + self.lam * torch.log(loss_npm)
+                        loss_npm_temp = loss_npm_temp + torch.exp(d[i] - di)
+                    if support_weights is not None:
+                        loss_npm = loss_npm + support_weights[i][j] * torch.log(loss_npm_temp)
+                    else:
+                        if isQ is True:
+                            loss_npm = loss_npm + torch.log(loss_npm_temp) / self.n_way / self.L
+                        else:
+                            loss_npm = loss_npm + torch.log(loss_npm_temp) / self.n_way / self.k_shot
+
+            # print("loss_ce: ", loss_ce, "loss_npm: ", loss_npm * self.lam)
+            return loss_ce + self.lam * loss_npm
         else:
+            # print("loss_ce: ", loss_ce)
             return loss_ce
 
     def accuracy(self, pred, label):
@@ -235,19 +261,23 @@ class MyModel_Clone(nn.Module):
         self.lstm = nn.LSTM(input_size=768, hidden_size=256, num_layers=1, bidirectional=True, batch_first=True,
                             dropout=0.2)
         self.mlp = nn.Sequential(
-            nn.Dropout(0.5),
+            nn.Dropout(0.2),
             nn.Linear(768, 512),
             nn.ReLU(),
-            nn.Dropout(0.5),
+            nn.Dropout(0.2),
             nn.Linear(512, 256),
-            nn.ReLU()
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(256, 256)
         )
         self.fc = nn.Sequential(
-            nn.Dropout(0.5),
+            nn.Dropout(0.2),
             nn.Linear(768*2, 768),
             nn.ReLU()
         )
         self.cost = nn.CrossEntropyLoss()
+        self.nllloss = nn.NLLLoss()
+        self.softmax = nn.Softmax(-1)
 
     def forward(self, inputs, is_classname=False):  # inputs:[N*K, 768*2] or [N, 768]
 
@@ -266,22 +296,44 @@ class MyModel_Clone(nn.Module):
     def cloned_mlp_dict(self):
         return {key: val.clone() for key, val in self.mlp.state_dict().items()}
 
-    def loss(self, logits, label, support, class_name, NPM, isQ=False):
-        loss_ce = self.cost(logits, label)
+    def loss(self, logits, label, support, class_name, NPM, isQ=False, support_weights=None):
+        if support_weights is None:
+            if isQ is True:
+                loss_ce = self.cost(logits, label) /self.L
+            else:
+                loss_ce = self.cost(logits, label) /self.k_shot
+        else:
+            logits_softmax = F.softmax(logits, dim=-1).log()  # [N*K, N]
+            support_weights_tensor = torch.from_numpy(support_weights).view(-1, 1).cuda()  # [N*K, 1]
+            logits_times_weights = logits_softmax * support_weights_tensor
+            loss_ce = self.nllloss(logits_times_weights, label)
 
         if NPM is True:
             loss_npm = torch.tensor(0.0, requires_grad=True)
             if isQ is True:
                 support_N = support.view((self.n_way, self.L, 256))
             else:
+                if support_weights is not None:
+                    support_weights = support_weights.reshape((self.n_way, self.k_shot))
                 support_N = support.view((self.n_way, self.k_shot, 256))
             for i, s in enumerate(support_N):
-                dist = -neg_dist(s, class_name)  # [K, N]
+                dist = -neg_dist(s, class_name) / torch.mean(-neg_dist(s, class_name), dim=0)  # [K, N]
                 for j, d in enumerate(dist):
+                    loss_npm_temp = torch.tensor(0.0, requires_grad=True)
                     for k, di in enumerate(d):
-                        loss_npm = loss_npm + torch.exp(d[i] - di)
-            return loss_ce + self.lam * torch.log(loss_npm)
+                        loss_npm_temp = loss_npm_temp + torch.exp(d[i] - di)
+                    if support_weights is not None:
+                        loss_npm = loss_npm + support_weights[i][j] * torch.log(loss_npm_temp)
+                    else:
+                        if isQ is True:
+                            loss_npm = loss_npm + torch.log(loss_npm_temp) / self.n_way / self.L
+                        else:
+                            loss_npm = loss_npm + torch.log(loss_npm_temp) / self.n_way / self.k_shot
+
+            # print("loss_ce: ", loss_ce, "loss_npm: ", loss_npm * self.lam)
+            return loss_ce + self.lam * loss_npm
         else:
+            # print("loss_ce: ", loss_ce)
             return loss_ce
 
     def accuracy(self, pred, label):

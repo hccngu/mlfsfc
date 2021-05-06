@@ -19,22 +19,47 @@ from my_transformers.transformers import BertConfig, BertModel, BertTokenizer
 
 
 class FewRel(data.Dataset):
-    def __init__(self, file_name, file_class, N, K, L, noise_rate):
+    def __init__(self, args, file_name, file_class, N, K, L, noise_rate, sample_class_weights=None, train=True):
         super(FewRel, self).__init__()
         if not os.path.isfile(file_name):
             raise Exception("[ERROR] Data file doesn't exist")
+        self.train = train
         self.json_data = json.load(open(file_name, 'r'))
         self.json_class_name = json.load(open(file_class, 'r'))
         self.classes = list(self.json_data.keys())  # example: p931
         self.N, self.K, self.L = N, K, L
         self.noise_rate = noise_rate
+        self.sample_class_weights = sample_class_weights
+        self.sew = np.load(args.support_weights_file)
+        _, id_metrix = np.mgrid[0: 54: 1, 0: 54: 1]  # [54, 54]每行都是0-53
+        self.id_metrix = id_metrix[~np.eye(id_metrix.shape[0], dtype=bool)].reshape(id_metrix.shape[0],
+                                                                               -1)  # [54, 53]去掉了对角线元素
 
     def __len__(self):
         return 1000000000
 
     def __getitem__(self, index):
         N, K, L = self.N, self.K, self.L
-        class_names = random.sample(self.classes, N)
+        scw = self.sample_class_weights
+        sew = self.sew
+        c = np.array(self.classes)
+        id_metrix = self.id_metrix
+        if (scw is None) or (self.train is not True):
+            class_names = random.sample(self.classes, N)
+        else:
+            class_names_num = []
+            class_name_num = np.random.choice(len(c), 1)
+            a = class_name_num[0]
+            class_names_num.append(a)
+            p = scw[a]
+            for i in range(N-1):
+                class_name_num = np.random.choice(id_metrix[a], 1, p=p, replace=False)
+                a = class_name_num[0]
+                class_names_num.append(a)
+                p = (p + scw[a])/2
+
+            class_names = c[class_names_num]
+
         support, support_label, query, query_label = [], [], [], []
         class_names_final = []
         for i, name in enumerate(class_names):
@@ -42,7 +67,11 @@ class FewRel(data.Dataset):
             class_name = class_name.split()
             class_names_final.append(class_name)
             rel = self.json_data[name]
-            samples = random.sample(rel, K+L)
+            tem = np.argwhere(c == name)
+            if self.train == True:
+                samples = np.random.choice(rel, K+L, p=sew[tem[0][0]], replace=False).tolist()
+            else:
+                samples = random.sample(rel, K+L)
             for j in range(K):
                 support.append([samples[j], i])
             for j in range(K, K+L):
@@ -76,9 +105,9 @@ class FewRel(data.Dataset):
         return class_names_final, support, support_label, query, query_label
 
 
-def get_dataloader(file_name, file_class, N, K, L, noise_rate):
+def get_dataloader(args, file_name, file_class, N, K, L, noise_rate, sample_class_weights=None, train=True):
     data_loader = data.DataLoader(
-        dataset=FewRel(file_name, file_class, N, K, L, noise_rate),
+        dataset=FewRel(args, file_name, file_class, N, K, L, noise_rate, sample_class_weights, train),
         batch_size=1,
         shuffle=False,
         num_workers=0

@@ -44,7 +44,7 @@ def test_model(mymodel, mymodel_clone, args):
 
     meta_loss_final = 0.0
     accs=0.0
-    val_iter = 1000
+    val_iter = args.test_iter
     for it in range(val_iter):
         meta_loss = 0.0
         mymodel.eval()
@@ -109,7 +109,7 @@ def test_model(mymodel, mymodel_clone, args):
 
         if (it+1) % 100 == 0:
 
-            print('step: {0:4} | val_loss:{1:3.6f}, val_accuracy: {2:3.2f}%'.format(it+1, meta_loss_final/(it+1), 100*accs/(it+1)))
+            print('step: {0:4} | test_loss:{1:3.6f}, test_accuracy: {2:3.2f}%'.format(it+1, meta_loss_final/(it+1), 100*accs/(it+1)))
 
         torch.cuda.empty_cache()
 
@@ -127,13 +127,22 @@ def main(args):
 
     mymodel = MyModel(args)
     mymodel_clone = MyModel_Clone(args)
+    best_acc = 0.0
+    best_loss = 0.0
     for file_name in os.listdir('model_checkpoint'):
-        if 'Lis25.tar' in file_name:
+        if 'isNPM.tar' in file_name:
             model_file = 'model_checkpoint/' + file_name
             mymodel.load_state_dict(torch.load(model_file))
             acc, loss = test_model(mymodel, mymodel_clone, args)
             print('model_name:', model_file)
             print('[TEST] | loss: {0:2.6f}, accuracy: {1:2.2f}%'.format(loss, acc * 100))
+            if acc > best_acc:
+                best_acc = acc
+                best_loss = loss
+                best_model_file = model_file
+    print('best_model_name:', best_model_file)
+    print('best_loss:', best_loss)
+    print('best_acc:', best_acc)
 
 
 if __name__ == '__main__':
@@ -152,7 +161,7 @@ if __name__ == '__main__':
     parser.add_argument('--B', type=int, help='batch number', default=1)
     parser.add_argument('--N', type=int, help='N way', default=5)
     parser.add_argument('--K', type=int, help='K shot', default=1)
-    parser.add_argument('--L', type=int, help='number of query per class', default=25)
+    parser.add_argument('--L', type=int, help='number of query per class', default=5)
     parser.add_argument('--noise_rate', type=int, help='noise rate, value range 0 to 10', default=0)
     parser.add_argument('--task_lr', type=int, help='Task learning rate(里层)', default=1e-1)
     parser.add_argument('--meta_lr', type=int, help='Meta learning rate(外层)', default=1e-3)
@@ -160,6 +169,10 @@ if __name__ == '__main__':
     parser.add_argument('--ITT', type=int, help='Increasing Training Tasks', default=True)
     parser.add_argument('--NPM_Loss', type=int, help='AUX Loss, N-pair-ms loss', default=False)
     parser.add_argument('--lam', type=int, help='the importance if AUX Loss', default=0.2)
+    parser.add_argument('--SW', type=bool, help='the weights of support instances', default=False)
+
+    # test.py专用
+    parser.add_argument('--test_iter', type=int, help='test iter', default=500)
 
     args = parser.parse_args()
 
